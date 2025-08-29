@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-Advanced File & Folder Manager (PySide6)
-
 Features:
 - Manual file hard-linking + timestamped backup
 - Folder clone using hard links, preserving full structure
@@ -14,6 +12,7 @@ Features:
 - Restore version option
 - Dark/Light mode toggle
 - GUI + file logging
+- Multiple files/folders securly delete
 """
 
 import sys
@@ -202,10 +201,13 @@ def log_to_file(message: str):
 class AdvancedFileManager(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Advanced File & Folder Manager")
+        self.setWindowTitle("SafeTree")
         self.setWindowIcon(QIcon())  # can set a path to an icon if desired
         self.resize(1100, 720)
         self.setAcceptDrops(True)
+        
+        self.active_threads = []
+
 
         # AES key (random for this session). In a real app you'd manage keys securely.
         self.key = get_random_bytes(32)
@@ -249,6 +251,12 @@ class AdvancedFileManager(QWidget):
         self.btn_secure_delete = QPushButton("Secure Delete File")
         self.btn_secure_delete.clicked.connect(self.select_file_for_secure_delete)
         btn_layout.addWidget(self.btn_secure_delete)
+        
+        self.btn_secure_delete_multi = QPushButton("Secure Delete Files/Folders")
+        self.btn_secure_delete_multi.clicked.connect(self.select_files_folders_for_secure_delete)
+        btn_layout.addWidget(self.btn_secure_delete_multi)
+        
+        
 
         # Folder actions
         self.btn_clone = QPushButton("Clone Folder Structure")
@@ -664,6 +672,48 @@ class AdvancedFileManager(QWidget):
             self.log(f"Secure delete error: {e}")
             QMessageBox.critical(self, "Error", f"Secure delete failed: {e}")
 
+    def select_files_folders_for_secure_delete(self):
+        # Select multiple files
+        files, _ = QFileDialog.getOpenFileNames(self, "Select files to securely delete")
+        # Select multiple folders
+        folder = QFileDialog.getExistingDirectory(self, "Select folder to securely delete")
+        paths = [Path(f) for f in files]
+        if folder:
+            paths.append(Path(folder))
+        if not paths:
+            return
+        self.start_secure_delete(paths)
+
+
+
+
+    def start_secure_delete(self, paths: list[Path]):
+        # Ask user for number of overwrite passes
+        passes, ok = QInputDialog.getInt(self, "Secure Delete", "Number of overwrite passes:", 3, 1, 7)
+        if not ok:
+            return
+
+        thread = SecureDeleteThread(paths, passes)
+        thread.progress.connect(self.progress.setValue)
+        thread.log_signal.connect(self.log)
+        
+        # Connect finished_signal to a handler so we can remove the thread reference
+        thread.finished_signal.connect(lambda: self.on_secure_delete_finished(thread))
+
+        # Keep a reference so the thread is not destroyed while running
+        self.active_threads.append(thread)
+        
+        # Start the thread
+        thread.start()
+
+
+
+    def on_secure_delete_finished(self, thread):
+        self.log("Secure deletion complete.")
+        if thread in self.active_threads:
+            self.active_threads.remove(thread)
+
+
     # ----------------------
     # Misc / UI helpers
     # ----------------------
@@ -690,6 +740,66 @@ class AdvancedFileManager(QWidget):
                 QTreeWidget, QTextEdit { background: #ffffff; color: #111111; }
                 QProgressBar { background: #e8e8e8; color: #111111; border-radius: 6px; }
             """)
+            
+class SecureDeleteThread(QThread):
+    progress = Signal(int)
+    log_signal = Signal(str)
+    finished_signal = Signal()
+
+    def __init__(self, paths: list[Path], passes: int = 3):
+        super().__init__()
+        self.paths = paths
+        self.passes = passes
+
+    def run(self):
+        # Flatten all files from folders
+        all_files = []
+        for p in self.paths:
+            if p.is_file():
+                all_files.append(p)
+            elif p.is_dir():
+                all_files.extend([f for f in p.rglob("*") if f.is_file()])
+
+        total = len(all_files) or 1
+        count = 0
+
+        for f in all_files:
+            try:
+                size = f.stat().st_size
+                with open(f, "r+b") as file_obj:
+                    for _ in range(self.passes):
+                        file_obj.seek(0)
+                        remaining = size
+                        chunk = 1024 * 1024
+                        while remaining > 0:
+                            to_write = min(chunk, remaining)
+                            file_obj.write(os.urandom(to_write))
+                            remaining -= to_write
+                        file_obj.flush()
+                        os.fsync(file_obj.fileno())
+                # Optional: rename file before deletion
+                try:
+                    f.rename(f.with_name(f.name + ".deleted"))
+                except:
+                    pass
+                f.unlink()
+                self.log_signal.emit(f"Securely deleted: {f}")
+            except Exception as e:
+                self.log_signal.emit(f"Failed to delete {f}: {e}")
+            count += 1
+            self.progress.emit(int(count / total * 100))
+
+        # Now delete empty directories recursively
+        for p in self.paths:
+            if p.is_dir():
+                try:
+                    shutil.rmtree(p, ignore_errors=True)
+                except Exception as e:
+                    self.log_signal.emit(f"Failed to remove directory {p}: {e}")
+
+        self.progress.emit(100)
+        self.finished_signal.emit()
+            
 
 # ----------------------
 # Run the app
@@ -702,3 +812,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
