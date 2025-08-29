@@ -203,7 +203,7 @@ class AdvancedFileManager(QWidget):
         super().__init__()
         self.setWindowTitle("SafeTree")
         self.setWindowIcon(QIcon())  # can set a path to an icon if desired
-        self.resize(1100, 720)
+        self.resize(960, 540)
         self.setAcceptDrops(True)
         
         self.active_threads = []
@@ -222,13 +222,22 @@ class AdvancedFileManager(QWidget):
 
         # Header / Info row
         header_layout = QHBoxLayout()
-        title = QLabel("⚙️ Advanced File & Folder Manager")
+        title = QLabel("⚙️Secure Your Folders, Preserve Their Structure")
         title.setFont(QFont("Segoe UI", 14, QFont.Bold))
         header_layout.addWidget(title)
         header_layout.addStretch()
         self.mode_button = QPushButton("Toggle Light Mode")
         self.mode_button.clicked.connect(self.toggle_mode)
         header_layout.addWidget(self.mode_button)
+        
+        self.btn_encrypt = QPushButton("Encrypt Files")
+        self.btn_encrypt.clicked.connect(self.select_files_for_encrypt)
+        header_layout.addWidget(self.btn_encrypt)
+
+        self.btn_decrypt = QPushButton("Decrypt File")
+        self.btn_decrypt.clicked.connect(self.select_file_for_decrypt)
+        header_layout.addWidget(self.btn_decrypt)        
+        
         main_layout.addLayout(header_layout)
 
         # Buttons (grouped)
@@ -240,13 +249,7 @@ class AdvancedFileManager(QWidget):
         self.btn_file_link.clicked.connect(self.select_file_for_link)
         btn_layout.addWidget(self.btn_file_link)
 
-        self.btn_encrypt = QPushButton("Encrypt Files")
-        self.btn_encrypt.clicked.connect(self.select_files_for_encrypt)
-        btn_layout.addWidget(self.btn_encrypt)
 
-        self.btn_decrypt = QPushButton("Decrypt File")
-        self.btn_decrypt.clicked.connect(self.select_file_for_decrypt)
-        btn_layout.addWidget(self.btn_decrypt)
 
         self.btn_secure_delete = QPushButton("Secure Delete File")
         self.btn_secure_delete.clicked.connect(self.select_file_for_secure_delete)
@@ -812,4 +815,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
